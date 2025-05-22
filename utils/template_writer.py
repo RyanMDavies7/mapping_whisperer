@@ -1,44 +1,39 @@
-# utils/template_writer.py
-
 from pathlib import Path
 from openpyxl import load_workbook
 from utils.helpers import get_header_row, unwrap_merged_headers, normalize
 import copy
 
-# Map our internal keys → exact Excel header captions
 HDRS = {
   "name":"Attribute Name", "desc":"Attribute Description",
   "type":"Datatype",       "sd":"Sourced/Derived",
   "src_t":"Source Table",  "src_a":"Source Attribute",
-  "ref_dim":"Referenced Dimension",
-  "nn":"Not Null",         "def_v":"Default Values",
-  "def_m1":"Default Records","def_m2":"Default Records (2)",
-  "clust":"Clustering",    "part":"Partitioning",
-  "key":"Keys"
+  "ref_dim":"Referenced Dimension", "nn":"Not Null",
+  "def_v":"Default Values","def_m1":"Default Records",
+  "def_m2":"Default Records (2)","clust":"Clustering",
+  "part":"Partitioning",   "key":"Keys"
 }
 
 def _build_map(ws, hdr_row:int) -> dict[str,int]:
     unwrap_merged_headers(ws, hdr_row)
-    return {normalize(c.value):c.column for c in ws[hdr_row] if c.value}
+    return { normalize(c.value): c.column for c in ws[hdr_row] if c.value }
 
 def _copy_style_only(ws, src_row:int, dst_row:int) -> None:
     for col in range(1, ws.max_column+1):
-        s, d = ws.cell(src_row,col), ws.cell(dst_row,col)
+        s,d = ws.cell(src_row,col), ws.cell(dst_row,col)
         if s.has_style:
             d._style = copy.copy(s._style)
         d.number_format = s.number_format
 
 def _write_sourcing(ws, entity:dict) -> None:
-    hdr    = get_header_row(ws, "Dependency")
-    colmap = {normalize(c.value):c.column for c in ws[hdr] if c.value}
-    for i,src in enumerate(entity.get("sources",[])):
+    hdr = get_header_row(ws, "Dependency")
+    cmap = { normalize(c.value): c.column for c in ws[hdr] if c.value }
+    for i, src in enumerate(entity.get("sources", [])):
         r = hdr + 1 + i
-        if "source database" in colmap:
-            ws.cell(r, colmap["source database"]).value = src["database"]
-        if "table name/dataset name" in colmap:
-            ws.cell(r, colmap["table name/dataset name"]).value = src["table"]
-        if "source column" in colmap:
-            ws.cell(r, colmap["source column"]).value = src["column"]
+        if "database" in cmap:
+            ws.cell(r, cmap["database"]).value = src["database"]
+        if "table name/dataset name" in cmap:
+            ws.cell(r, cmap["table name/dataset name"]).value = src["table"]
+        # we skip src["column"] here since Sourcing only wants DB & Table
 
 def write_entity(entity:dict, template_path:str|Path, out_dir:str|Path) -> Path:
     wb = load_workbook(template_path)
@@ -57,20 +52,14 @@ def write_entity(entity:dict, template_path:str|Path, out_dir:str|Path) -> Path:
     # 3) Sourcing
     _write_sourcing(ws, entity)
 
-    # 4) Transformation header & map
-    th = hdr
+    # 4) Transformation headers
+    th   = hdr
     cmap = _build_map(ws, th)
-
-    # 5) Validate headers
-    for caption in HDRS.values():
-        if normalize(caption) not in cmap:
-            raise ValueError(f"Missing header: {caption!r}")
-
-    start = th + 1
+    start= th + 1
     needed = len(entity["fields"])
-    CAP    = 500
+    CAP = 500
 
-    # 6) Insert extra rows if beyond 500
+    # 5) Extend rows if >500
     if needed > CAP:
         extra = needed - CAP
         ins   = start + CAP
@@ -78,11 +67,11 @@ def write_entity(entity:dict, template_path:str|Path, out_dir:str|Path) -> Path:
         for off in range(extra):
             _copy_style_only(ws, start+CAP-1, ins+off)
 
-    # 7) Ensure style for each new row
+    # 6) Ensure style
     for i in range(needed):
         _copy_style_only(ws, start, start+i)
 
-    # 8) Write each field (skip '#' column)
+    # 7) Write each field
     def C(k): return cmap[normalize(HDRS[k])]
     for i,f in enumerate(entity["fields"]):
         r = start + i

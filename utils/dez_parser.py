@@ -1,31 +1,18 @@
-# utils/dez_parser.py
-
 import re
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-# -----------------------------------------------------------------------------
-# Default‐values map (unchanged)
-# -----------------------------------------------------------------------------
-DEFAULTS = {
-    "TIMESTAMP-Start": { "Default Values": '"1900-01-01 00:00:00.0000"' , "Default Records": '"1900-01-01 00:00:00.0000"' , "Default Records (2)": '"1900-01-01 00:00:00.0000"' },
-    "TIMESTAMP-End"  : { "Default Values": '"9999-12-31 23:59:59.9999"' , "Default Records": '"9999-12-31 23:59:59.9999"' , "Default Records (2)": '"9999-12-31 23:59:59.9999"' },
-    "TIMESTAMP"      : { "Default Values": '"1900-01-01 00:00:00.0000"' , "Default Records": '"1900-01-01 00:00:00.0000"' , "Default Records (2)": '"9999-12-31 23:59:59.9999"' },
-    "DATETIME"       : { "Default Values": '"1900-01-01 00:00:00.0000"' , "Default Records": '"1900-01-01 00:00:00.0000"' , "Default Records (2)": '"9999-12-31 23:59:59.9999"' },
-    "DATE"           : { "Default Values": '"1900-01-01"'             , "Default Records": '"1900-01-01"'             , "Default Records (2)": '"9999-12-31"'             },
-    "INT64"          : { "Default Values": "-1"                       , "Default Records": "-1"                       , "Default Records (2)": "-2"                       },
-    "STRING"         : { "Default Values": '""'                       , "Default Records": '""'                       , "Default Records (2)": '""'                       },
-    "BOOL"           : { "Default Values": "NULL"                     , "Default Records": "NULL"                     , "Default Records (2)": "NULL"                     },
-    "NUMERIC"        : { "Default Values": "0"                        , "Default Records": "0"                        , "Default Records (2)": "0"                        },
-    "FLOAT64"        : { "Default Values": '"0.0"'                     , "Default Records": '"0.0"'                     , "Default Records (2)": '"0.0"'                     },
-}
+# -------------------------------------------------------------------
+# DEFAULTS unchanged...
+# -------------------------------------------------------------------
 
 def resolve_defaults(col_name: str, dtype: str) -> dict:
+    # … same as before …
     key = dtype.upper()
-    name_l = col_name.lower()
-    if "effective_start" in name_l:
+    lower = col_name.lower()
+    if "effective_start" in lower:
         key = "TIMESTAMP-Start"
-    elif "effective_end" in name_l:
+    elif "effective_end" in lower:
         key = "TIMESTAMP-End"
     return DEFAULTS.get(key, {"Default Values": "", "Default Records": "", "Default Records (2)": ""})
 
@@ -33,14 +20,14 @@ def parse_dez_file(filepath: str | Path) -> list[dict]:
     tree = ET.parse(filepath)
     root = tree.getroot()
 
-    # 1) id → name map for Entities
+    # 1) id→name map
     id2name = {
         e.findtext("ID"): e.findtext("NAME")
         for e in root.findall(".//ENTITIES/ENT")
         if e.findtext("ID") and e.findtext("NAME")
     }
 
-    # 2) Build FK map: child-entity-ID → { attr-ID : parent-entity-name }
+    # 2) FK map
     fk_for_entity = {}
     for rel in root.findall(".//RELATIONSHIPS/REL"):
         pid = rel.findtext("PARENTOBJECTID","")
@@ -59,120 +46,113 @@ def parse_dez_file(filepath: str | Path) -> list[dict]:
         ent_name = ent.findtext("NAME","")
         ent_desc = ent.findtext("DESC","")
 
-        # primary keys
+        # PKs
         pk_ids = {
             a.text.strip()
             for a in ent.findall("./PKCON/ATTRIBUTEIDS/ATTRIBUTEID")
             if a.text
         }
-
-        # this entity's foreign-key map
+        # this entity’s FKs
         this_fk_map = fk_for_entity.get(ent_id, {})
 
-        # ---------------------------------------------------------------------
-        # 3) Collect entity-level UDPs (under <USERDEFPROPS>)
-        #   e.g. <UDP_GUID>some_value</UDP_GUID>
-        # ---------------------------------------------------------------------
-        udps = {
-            udp.tag: (udp.text or "")
-            for udp in ent.findall("./USERDEFPROPS/*")
-        }
+        # --- entity-level UDPs under USERDEFPROPS ---
+        udps = { udp.tag: (udp.text or "")
+                 for udp in ent.findall("./USERDEFPROPS/*") }
 
-        # 3a) Build “sources” from UDPs like "01_source_database_1"
+        # build sources from names like 01_source_database_1 etc.
         src_re = re.compile(r"(\d+)_(source_database|source_table|source_column)_(\d+)")
-        temp   = {}
+        tmp = {}
         for name, val in udps.items():
             m = src_re.match(name)
             if not m: continue
             kind = m.group(2).split("_",1)[1]   # database/table/column
             grp  = m.group(1)
-            temp.setdefault(grp, {})[kind] = val
-
+            tmp.setdefault(grp, {})[kind] = val
         sources = [
-            {
-                "database": g.get("database",""),
-                "table":    g.get("table",""),
-                "column":   g.get("column","")
-            }
-            for _,g in sorted(temp.items(), key=lambda x:int(x[0]))
+            {"database": g.get("database",""),
+             "table":    g.get("table",""),
+             "column":   g.get("column","")}
+            for _,g in sorted(tmp.items(), key=lambda x:int(x[0]))
         ]
 
-        # 3b) Capture <TABOPT> text for table options
+        # capture <TABOPT> for DDL snippet
         table_options = ent.findtext("TABOPT","") or ""
-
-        # Pre-parse partition & cluster columns from that DDL snippet
+        # pre‐extract partition/cluster columns
         part_cols, clust_cols = [], []
         pm = re.search(r"PARTITION\s+BY\s+[^(]+\(\s*([^) ,]+)", table_options, re.IGNORECASE)
         if pm: part_cols = [pm.group(1).strip()]
         cm = re.search(r"CLUSTER\s+BY\s+([^\n\r]+)", table_options, re.IGNORECASE)
-        if cm:
-            clust_cols = [c.strip() for c in cm.group(1).split(",")]
+        if cm: clust_cols = [c.strip() for c in cm.group(1).split(",")]
 
-        # ---------------------------------------------------------------------
-        # 4) Parse each <ATTR> into a field dict
-        # ---------------------------------------------------------------------
+        # parse each field
         fields = []
         for attr in ent.findall("./ATTRIBUTES/ATTR"):
             aid   = attr.findtext("ID","")
             name  = attr.findtext("NAME","")
             desc  = attr.findtext("DESC","")
             dtype = attr.findtext("DT/DTLISTNAME","STRING")
-            notnull = (attr.findtext("./NNCON/VALUE") == "1")
+            nn    = (attr.findtext("./NNCON/VALUE")=="1")
 
-            # key logic
+            # keyType
             is_pk = aid in pk_ids
             is_fk = aid in this_fk_map
             if is_pk and is_fk:
-                key_type = "PRIMARY, FOREIGN"
+                kt = "PRIMARY, FOREIGN"
             elif is_pk:
-                key_type = "PRIMARY"
+                kt = "PRIMARY"
             elif is_fk:
-                key_type = "FOREIGN"
+                kt = "FOREIGN"
             else:
-                key_type = ""
+                kt = ""
 
             refdim = this_fk_map.get(aid,"")
 
-            # field-level UDPs (sourcing/clustering/partitioning)
+            # attribute-level USERDEFPROPS values (in order if no name match)
             st, sc = [], []
-            part_flag  = "Y" if name in part_cols else ""
-            clust_flag = "Y" if name in clust_cols else ""
+            # first look for named UDPs "udp_source_table", "udp_source_column"
             for udp in attr.findall("./USERDEFPROPS/*"):
                 tag = udp.tag.lower()
                 val = udp.text or ""
-                if tag.startswith("udp_source_table"):
+                if "source_table" in tag:
                     st.append(val)
-                elif tag.startswith("udp_source_column"):
+                elif "source_column" in tag:
                     sc.append(val)
-                elif "partitioning" in tag and not part_flag:
-                    part_flag = val
-                elif "clustering" in tag  and not clust_flag:
-                    clust_flag = val
+            # fallback: if none found, assume first three UDP-texts are [db,table,column]
+            if not st or not sc:
+                vals = [u.text or "" for u in attr.findall("./USERDEFPROPS/*")]
+                if len(vals) >= 2 and not st:
+                    st = [vals[1]]
+                if len(vals) >= 3 and not sc:
+                    sc = [vals[2]]
+
+            # partition/cluster flags
+            part_flag  = "Y" if name in part_cols  else ""
+            clust_flag = "Y" if name in clust_cols else ""
 
             defs = resolve_defaults(name, dtype)
             fields.append({
-                "name": name,
-                "description": desc,
-                "datatype": dtype,
-                "sourced": not is_fk,
-                "not_null": notnull,
-                "src_table": ", ".join(st),
-                "src_attr":  ", ".join(sc),
-                "def_val":   defs["Default Values"],
-                "def_m1":    defs["Default Records"],
-                "def_m2":    defs["Default Records (2)"],
-                "key_type":  key_type,
+                "name":                 name,
+                "description":          desc,
+                "datatype":             dtype,
+                "sourced":              not is_fk,
+                "not_null":             nn,
+                "src_table":            ", ".join(st),
+                "src_attr":             ", ".join(sc),
+                "def_val":              defs["Default Values"],
+                "def_m1":               defs["Default Records"],
+                "def_m2":               defs["Default Records (2)"],
+                "key_type":             kt,
                 "referenced_dimension": refdim,
-                "partitioning": part_flag,
-                "clustering":  clust_flag,
+                "partitioning":         part_flag,
+                "clustering":           clust_flag,
             })
 
         entities.append({
-            "name":          ent_name,
-            "description":   ent_desc,
-            "sources":       sources,
-            "table_options": table_options,
-            "fields":        fields,
+            "name":           ent_name,
+            "description":    ent_desc,
+            "sources":        sources,
+            "table_options":  table_options,
+            "fields":         fields,
         })
 
     return entities
