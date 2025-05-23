@@ -12,6 +12,18 @@
 - ✅ Derives sourcing and derivation logic using user-defined properties
 - ✅ Clean formatting with preserved Excel styles
 
+## TO DO....
+
+- Lowercase values in source table, source attribute
+- Get staghist tables from GCP
+- Get dim_source_record_set
+- Get Jira ticket from entity and put into mapping
+- Populate DDL 
+- Does CLUSTER BY & PARTITION BY need to be in TABLE_OPTIONS
+- Source/Business for source_key_value_number, source_key_value_string etc...
+- Tidy up requirements.txt
+- 
+
 ## 🏁 Getting Started
 
 1. **Clone the repository**

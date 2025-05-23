@@ -74,6 +74,7 @@ Thumbs.db
 
 # Ignore outputs folder and all contents
 outputs/
+inputs/
 
 # Ignore zip files
 *.zip
