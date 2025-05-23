@@ -1,6 +1,6 @@
 from utils.dez_parser import parse_dez_file
 
-data = parse_dez_file("../inputs/orders.dez")
+data = parse_dez_file("../inputs/samples/orders.dez")
 
 print("Versions :", data["versions"])
 print("Diagrams :", data["diagrams"])

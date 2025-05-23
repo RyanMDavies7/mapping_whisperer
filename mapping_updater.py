@@ -4,7 +4,7 @@ from utils.helpers import (
     get_header_row, unwrap_merged_headers, copy_table, copy_metadata
 )
 
-SOURCE_FILE = "inputs/Mapping_1-7.xlsx"
+SOURCE_FILE = "inputs/samples/Mapping_1-7.xlsx"
 TARGET_FILE = "templates/mapping_1-11.xlsx"
 OUTPUT_FILE = "outputs/mapping_1-11_UPDATED.xlsx"
 TEMPLATE_SHEET_NAME = "Transformation - Sourcing (1)"

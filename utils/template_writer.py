@@ -39,11 +39,11 @@ def write_entity(entity:dict, template_path:str|Path, out_dir:str|Path) -> Path:
     ws["B3"] = entity["name"]
     ws["B4"] = entity["description"]
 
-    # 2) Table options line
+    # 2) Get Header
     th = get_header_row(ws, "#")
-    opts = entity.get("table_options","")
-    if opts:
-        ws.cell(th-1,1).value = f"Table options: {opts}"
+    # opts = entity.get("table_options","")
+    # if opts:
+    #     ws.cell(th-1,1).value = f"Table options: {opts}"
 
     # 3) Unwrap & map Transformation headers
     cmap = _build_map(ws, th)
